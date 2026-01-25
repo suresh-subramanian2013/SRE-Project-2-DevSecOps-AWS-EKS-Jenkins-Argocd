@@ -6,7 +6,7 @@ A production-ready CI/CD pipeline for deploying applications to AWS EKS with com
 
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Pipeline Stages](#pipeline-stages)
+- [Pipeline Jobs](#pipeline-jobs)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Infrastructure Setup](#infrastructure-setup)
@@ -23,7 +23,7 @@ This project implements a complete DevOps CI/CD pipeline that addresses common c
 ### Key Features
 
 - ✅ **Infrastructure as Code**: Complete Terraform modules for AWS EKS, VPC, and ECR
-- ✅ **6-Stage CI/CD Pipeline**: Platform checks, validation, build, package, scan, and promote
+- ✅ **GitHub Actions CI/CD Pipeline**: Automated multi-stage pipeline with security scanning
 - ✅ **Security Scanning**: Snyk SAST and container image vulnerability scanning
 - ✅ **Policy Enforcement**: Kyverno policies for Kubernetes security and compliance
 - ✅ **GitOps Deployment**: ArgoCD for declarative, automated deployments
@@ -34,7 +34,7 @@ This project implements a complete DevOps CI/CD pipeline that addresses common c
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      GitHub Actions CI/CD Pipeline               │
+│                   GitHub Actions CI/CD Pipeline                  │
 ├─────────────────────────────────────────────────────────────────┤
 │ Job 1: Platform Check → EKS Cluster Health Validation           │
 │ Job 2: Validate → Dockerfile, K8s, Kyverno, Snyk SAST          │
@@ -45,17 +45,17 @@ This project implements a complete DevOps CI/CD pipeline that addresses common c
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                         AWS Infrastructure                       │
+│                      AWS Infrastructure                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  VPC (Public/Private Subnets) → EKS Cluster → Worker Nodes     │
-│  ECR Repositories → Container Images + Helm Charts              │
-│  ArgoCD → Monitors Config Repo → Deploys to EKS                │
+│  VPC → EKS Cluster → Worker Nodes                               │
+│  ECR → Container Images + Helm Charts                           │
+│  ArgoCD → Config Repo → Automated Deployments                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Pipeline Stages
+## 🚀 Pipeline Jobs
 
-### Stage 1: Platform Checks (AWS EKS Cluster)
+### Job 1: Platform Check
 
 Validates that the target EKS cluster is operational before deployment.
 
@@ -66,59 +66,43 @@ Validates that the target EKS cluster is operational before deployment.
 
 **Script:** [`scripts/check-eks-cluster.sh`](scripts/check-eks-cluster.sh)
 
-### Stage 2: Validate
+### Job 2-5: Validation
 
-Ensures code quality, security, and compliance before building.
-
-**Components:**
-- **Dockerfile Linting**: Hadolint validates Dockerfile best practices
-- **Kubernetes Syntax**: Kubeconform validates K8s manifests
-- **Kyverno Policies**: Tests security policies (privileged pods, resource limits)
-- **Snyk SAST**: Static application security testing for code vulnerabilities
+**Job 2: Validate Dockerfile** - Hadolint linting  
+**Job 3: Validate Kubernetes** - Kubeconform manifest validation  
+**Job 4: Validate Kyverno Policies** - Security policy testing  
+**Job 5: SAST Snyk** - Code vulnerability scanning  
 
 **Script:** [`scripts/validate-k8s-manifests.sh`](scripts/validate-k8s-manifests.sh)
 
-### Stage 3: Build Artifact (Maven)
+### Job 6: Build Maven
 
-Compiles the Java application and generates deployable artifacts.
+Compiles Java application and generates JAR/WAR artifacts.
 
-**Output:** JAR/WAR files stored as pipeline artifacts
+### Job 7-8: Package
 
-### Stage 4: Package
+**Job 7: Package Docker**
+- Build Docker image from [`Dockerfile`](Dockerfile)
+- Tag with commit SHA and environment
+- Push to AWS ECR
 
-Containerizes the application and prepares for deployment.
+**Job 8: Package Helm**
+- Package Helm chart with version metadata
+- Push to AWS ECR
 
-**Actions:**
-1. Build Docker image from [`Dockerfile`](Dockerfile)
-2. Tag image with commit SHA and environment
-3. Package Helm chart with version metadata
-4. Push image and chart to AWS ECR
+### Job 9: Container Scan
 
-**Metadata Example:** `${AWS_ECR_URI}:${COMMIT_ID}`
+Snyk scans built image for security vulnerabilities and CVEs.
 
-### Stage 5: Scan Container Image with Snyk
+### Job 10: Promote to ArgoCD
 
-Scans the built container image for security vulnerabilities.
-
-**Checks:**
-- Known CVE IDs in software packages
-- Outdated libraries and risky dependencies
-- Security issues in base images
-
-**Threshold:** High severity vulnerabilities
-
-### Stage 6: Promote to Dev/QA/Prod
-
-Updates the GitOps configuration repository for ArgoCD deployment.
-
-**Workflow:**
-1. Create/update `config.yaml` with Helm chart version and image tag
-2. Commit and push to config repository
-3. ArgoCD detects changes and syncs to target cluster
-4. Post-deployment validation (health checks, pod status)
-5. Run automated tests (Jenkins integration for QA/Prod)
+Updates GitOps config repository for ArgoCD deployment.
 
 **Script:** [`scripts/update-config-repo.sh`](scripts/update-config-repo.sh)
+
+### Job 11: Approval Gates
+
+Manual approvals for QA and Production deployments.
 
 ## 📦 Prerequisites
 
@@ -134,24 +118,23 @@ Updates the GitOps configuration repository for ArgoCD deployment.
 
 ### Required Accounts & Credentials
 
-- AWS account with permissions for EKS, ECR, VPC, IAM
-- GitHub account with repository access
+- AWS account with EKS, ECR, VPC permissions
+- GitHub account with Actions enabled
 - Snyk account and API token
 - ArgoCD installation on target clusters
 
-### Environment Variables
+### GitHub Secrets Configuration
 
-Set these in GitHub Secrets (Settings → Secrets and variables → Actions):
+Set these in **Settings → Secrets and variables → Actions**:
 
-```bash
-AWS_ACCOUNT_ID=123456789012
-AWS_DEFAULT_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-SNYK_TOKEN=your-snyk-api-token
-JENKINS_URL=https://jenkins.example.com
-JENKINS_USER=ci-user
-JENKINS_TOKEN=your-jenkins-token
+```
+AWS_ACCOUNT_ID           # Your 12-digit AWS account ID
+AWS_ACCESS_KEY_ID        # IAM access key
+AWS_SECRET_ACCESS_KEY    # IAM secret key
+SNYK_TOKEN              # Snyk API token
+JENKINS_URL             # (Optional) Jenkins server URL
+JENKINS_USER            # (Optional) Jenkins username
+JENKINS_TOKEN           # (Optional) Jenkins API token
 ```
 
 ## 🚀 Quick Start
@@ -159,8 +142,8 @@ JENKINS_TOKEN=your-jenkins-token
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/sre-project-1.git
-cd sre-project-1
+git clone https://github.com/suresh-subramanian2013/SRE-Project-1-AWS-EKS-Argocd.git
+cd SRE-Project-1-AWS-EKS-Argocd
 ```
 
 ### 2. Deploy Infrastructure
@@ -173,11 +156,6 @@ terraform init
 
 # Create S3 bucket for state (one-time setup)
 aws s3 mb s3://terraform-state-cicd-pipeline --region us-east-1
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
 
 # Plan infrastructure
 terraform plan -var="environment=dev"
@@ -224,17 +202,18 @@ kubectl apply -f argocd/application-qa.yaml
 kubectl apply -f argocd/application-prod.yaml
 ```
 
-### 6. Configure GitHub Actions
+### 6. Configure GitHub Secrets
 
-1. Push code to GitHub repository
-2. Set secrets in GitHub repository settings (Settings → Secrets and variables → Actions)
-3. Pipeline will automatically trigger on commits to `dev`, `qa`, or `prod` branches
+1. Go to repository **Settings → Secrets and variables → Actions**
+2. Add all required secrets (see Prerequisites section)
+3. Push code to `dev`, `qa`, or `prod` branch
+4. Workflow automatically triggers!
 
 ## 🏗️ Infrastructure Setup
 
 ### Terraform Modules
 
-#### VPC Module (`terraform/modules/vpc/`)
+#### VPC Module
 
 Creates a production-ready VPC with:
 - 3 public subnets across availability zones
@@ -242,15 +221,15 @@ Creates a production-ready VPC with:
 - NAT gateways for outbound internet access
 - EKS-specific tags for load balancer provisioning
 
-#### EKS Module (`terraform/modules/eks/`)
+#### EKS Module
 
 Provisions an AWS EKS cluster with:
 - Managed node groups with autoscaling
-- OIDC provider for IAM Roles for Service Accounts (IRSA)
+- OIDC provider for IRSA support
 - Essential add-ons: VPC CNI, CoreDNS, kube-proxy, EBS CSI driver
 - CloudWatch logging for control plane
 
-#### ECR Module (`terraform/modules/ecr/`)
+#### ECR Module
 
 Creates ECR repositories with:
 - Scan-on-push enabled for security
@@ -259,15 +238,15 @@ Creates ECR repositories with:
 
 ### Customization
 
-Edit [`terraform/variables.tf`](terraform/variables.tf) to customize:
+Edit [`terraform/variables.tf`](terraform/variables.tf):
 
 ```hcl
 variable "environment" {
-  default = "dev"  # Change to qa or prod
+  default = "dev"
 }
 
 variable "eks_cluster_version" {
-  default = "1.28"  # Update Kubernetes version
+  default = "1.28"
 }
 
 variable "node_groups" {
@@ -288,22 +267,19 @@ variable "node_groups" {
 
 ### GitHub Actions Secrets
 
-Configure in **Settings → Secrets and variables → Actions**:
-
 | Secret | Description | Example |
 |--------|-------------|---------|
 | `AWS_ACCOUNT_ID` | AWS account ID | `123456789012` |
 | `AWS_ACCESS_KEY_ID` | AWS access key | `AKIAIOSFODNN7EXAMPLE` |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
 | `SNYK_TOKEN` | Snyk API token | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `JENKINS_URL` | Jenkins server URL | `https://jenkins.example.com` |
-| `JENKINS_USER` | Jenkins username | `ci-user` |
-| `JENKINS_TOKEN` | Jenkins API token | `your-jenkins-token` |
+| `JENKINS_URL` | Jenkins server | `https://jenkins.example.com` |
+| `JENKINS_USER` | Jenkins user | `ci-user` |
+| `JENKINS_TOKEN` | Jenkins API token | `your-token` |
 
-### Customizing Pipeline Jobs
+### Customize Pipeline
 
 Edit [`.github/workflows/cicd-pipeline.yml`](.github/workflows/cicd-pipeline.yml) to:
-
 - Add custom validation steps
 - Modify security thresholds
 - Add integration tests
@@ -312,64 +288,37 @@ Edit [`.github/workflows/cicd-pipeline.yml`](.github/workflows/cicd-pipeline.yml
 ## 🔄 Deployment Workflow
 
 ### Development Environment
-
-```mermaid
-graph LR
-    A[Commit to dev] --> B[Pipeline Triggers]
-    B --> C[All 6 Stages Run]
-    C --> D[Auto-deploy to Dev]
-    D --> E[ArgoCD Syncs]
-    E --> F[Pods Running]
-```
-
-**Trigger:** Push to `dev` branch  
-**Deployment:** Automatic
+- **Trigger:** Push to `dev` branch
+- **Deployment:** Automatic
+- **ArgoCD Sync:** Automatic
 
 ### QA Environment
-
-**Trigger:** Push to `qa` branch  
-**Deployment:** Manual approval required  
-**Tests:** Jenkins automated tests run post-deployment
+- **Trigger:** Push to `qa` branch
+- **Deployment:** Manual approval required
+- **Tests:** Jenkins integration
 
 ### Production Environment
-
-**Trigger:** Push to `prod` branch  
-**Deployment:** Manual approval required  
-**ArgoCD Sync:** Manual (for safety)
-
-### Promotion Flow
-
-1. **Dev** → Code merged, auto-deployed
-2. **QA** → Manual promotion, automated tests
-3. **Prod** → Manual promotion after QA approval
+- **Trigger:** Push to `prod` branch
+- **Deployment:** Manual approval required
+- **ArgoCD Sync:** Manual (for safety)
 
 ## 🔒 Security & Compliance
 
 ### Kyverno Policies
 
-Three cluster policies enforce security:
-
-1. **Restrict Privileged Containers** ([`kyverno-policies/restrict-privileged-pods.yaml`](kyverno-policies/restrict-privileged-pods.yaml))
-   - Prevents privileged containers
-   - Severity: High
-
-2. **Require Resource Limits** ([`kyverno-policies/require-resource-limits.yaml`](kyverno-policies/require-resource-limits.yaml))
-   - Enforces CPU and memory limits
-   - Severity: Medium
-
-3. **Disallow Host Namespaces** ([`kyverno-policies/disallow-host-namespaces.yaml`](kyverno-policies/disallow-host-namespaces.yaml))
-   - Prevents host PID, IPC, and network access
-   - Severity: High
+1. **Restrict Privileged Containers** - Prevents privileged pods
+2. **Require Resource Limits** - Enforces CPU/memory limits
+3. **Disallow Host Namespaces** - Prevents host PID/IPC/network access
 
 ### Snyk Security Scanning
 
-- **SAST (Stage 2):** Scans source code for vulnerabilities
-- **Container Scan (Stage 5):** Scans Docker images for CVEs
+- **SAST (Job 5):** Source code vulnerability scanning
+- **Container Scan (Job 9):** Docker image CVE scanning
 - **Threshold:** High severity blocks pipeline
 
 ### Docker Security
 
-The [`Dockerfile`](Dockerfile) implements security best practices:
+The [`Dockerfile`](Dockerfile) implements:
 - Non-root user execution
 - Multi-stage builds
 - Minimal base image (JRE slim)
@@ -380,158 +329,71 @@ The [`Dockerfile`](Dockerfile) implements security best practices:
 
 ### Common Issues
 
-#### 1. EKS Cluster Not Ready
-
-**Error:** `EKS cluster is not ACTIVE`
-
-**Solution:**
+#### EKS Cluster Not Ready
 ```bash
-# Check cluster status
 aws eks describe-cluster --name cicd-pipeline-dev --region us-east-1
-
-# Check CloudFormation stacks
-aws cloudformation describe-stacks --region us-east-1
 ```
 
-#### 2. Worker Nodes Not Ready
-
-**Error:** `Some worker nodes are not in Ready state`
-
-**Solution:**
+#### Worker Nodes Not Ready
 ```bash
-# Check node status
 kubectl get nodes
-
-# Describe problematic node
 kubectl describe node <node-name>
-
-# Check node group in AWS console
-aws eks describe-nodegroup --cluster-name cicd-pipeline-dev --nodegroup-name <nodegroup-name>
 ```
 
-#### 3. Dockerfile Validation Failed
-
-**Error:** `hadolint: DL3008: Pin versions in apt-get install`
-
-**Solution:** Update Dockerfile to pin package versions:
+#### Dockerfile Validation Failed
+Update `Dockerfile` to pin package versions:
 ```dockerfile
-RUN apt-get update && apt-get install -y \
-    curl=7.68.0-1ubuntu2.14 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl=7.68.0-1 && rm -rf /var/lib/apt/lists/*
 ```
 
-#### 4. Kyverno Policy Violation
-
-**Error:** `Privileged containers are not allowed`
-
-**Solution:** Update Helm chart [`values.yaml`](helm-chart/values.yaml):
-```yaml
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-```
-
-#### 5. Snyk Scan Failures
-
-**Error:** `High severity vulnerabilities found`
-
-**Solution:**
+#### Snyk Scan Failures
 ```bash
-# Update dependencies in pom.xml
 mvn versions:display-dependency-updates
-
-# Or adjust threshold in .github/workflows/cicd-pipeline.yml
-SNYK_SEVERITY_THRESHOLD: "critical"
 ```
 
-#### 6. ArgoCD Not Syncing
-
-**Error:** `Application health status is Degraded`
-
-**Solution:**
+#### ArgoCD Not Syncing
 ```bash
-# Check ArgoCD application status
-kubectl get applications -n argocd
-
-# View detailed status
-kubectl describe application cicd-demo-app-dev -n argocd
-
-# Force sync
 argocd app sync cicd-demo-app-dev
 ```
 
-#### 7. ECR Push Failed
-
-**Error:** `denied: Your authorization token has expired`
-
-**Solution:**
-```bash
-# Re-authenticate to ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
-```
-
-### Detailed Troubleshooting Guide
-
-For more detailed troubleshooting steps, see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+For detailed troubleshooting, see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
 
 ## 📁 Project Structure
 
 ```
 sre-project-1/
+├── .github/workflows/              # GitHub Actions
+│   └── cicd-pipeline.yml          # Main CI/CD workflow
 ├── terraform/                      # Infrastructure as Code
-│   ├── main.tf                    # Root configuration
-│   ├── variables.tf               # Input variables
-│   ├── outputs.tf                 # Output values
-│   ├── backend.tf                 # S3 backend config
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── backend.tf
 │   └── modules/
-│       ├── vpc/                   # VPC module
-│       ├── eks/                   # EKS cluster module
-│       └── ecr/                   # ECR repositories module
-├── helm-chart/                    # Helm chart for application
+│       ├── vpc/
+│       ├── eks/
+│       └── ecr/
+├── helm-chart/                     # Kubernetes Helm chart
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       ├── ingress.yaml
-│       ├── configmap.yaml
-│       ├── serviceaccount.yaml
-│       └── hpa.yaml
-├── kyverno-policies/              # Kubernetes security policies
-│   ├── restrict-privileged-pods.yaml
-│   ├── require-resource-limits.yaml
-│   └── disallow-host-namespaces.yaml
-├── argocd/                        # ArgoCD application definitions
-│   ├── application-dev.yaml
-│   ├── application-qa.yaml
-│   └── application-prod.yaml
-├── scripts/                       # Pipeline helper scripts
-│   ├── check-eks-cluster.sh      # Stage 1: Platform check
-│   ├── validate-k8s-manifests.sh # Stage 2: Validation
-│   └── update-config-repo.sh     # Stage 6: Promotion
-├── src/                           # Sample Java application
-│   └── main/
-│       ├── java/com/example/App.java
-│       └── resources/application.properties
-├── .github/
-│   └── workflows/
-│       └── cicd-pipeline.yml      # GitHub Actions CI/CD pipeline
-├── Dockerfile                     # Container image definition
-├── pom.xml                        # Maven build configuration
-└── README.md                      # This file
+├── kyverno-policies/               # Security policies
+├── argocd/                         # ArgoCD applications
+├── scripts/                        # Helper scripts
+├── src/                            # Sample Java app
+├── Dockerfile                      # Container image
+├── pom.xml                         # Maven config
+└── README.md                       # This file
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
+Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add feature'`)
+4. Push branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ## 📝 License
@@ -542,10 +404,8 @@ This project is licensed under the MIT License.
 
 For questions or issues:
 - Create an issue in the repository
-- Contact the DevOps team at devops@example.com
+- Contact: devops@example.com
 
 ---
 
 **Built with ❤️ by the DevOps Team**
-#   S R E - P r o j e c t - 1 - A W S - E K S - A r g o c d  
- 
