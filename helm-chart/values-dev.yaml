@@ -1,0 +1,30 @@
+# Environment-specific values for dev
+environment: dev
+
+replicaCount: 2
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cicd-pipeline-dev-app-backend
+  tag: latest
+
+ingress:
+  enabled: true
+  hosts:
+    - host: dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+env:
+  - name: ENVIRONMENT
+    value: "dev"
+  - name: LOG_LEVEL
+    value: "DEBUG"

@@ -1,0 +1,37 @@
+# Environment-specific values for production
+environment: prod
+
+replicaCount: 5
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cicd-pipeline-prod-app-backend
+  tag: latest
+
+ingress:
+  enabled: true
+  hosts:
+    - host: app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+env:
+  - name: ENVIRONMENT
+    value: "prod"
+  - name: LOG_LEVEL
+    value: "WARN"
