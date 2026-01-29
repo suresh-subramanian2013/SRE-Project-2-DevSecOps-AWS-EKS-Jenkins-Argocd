@@ -1,4 +1,4 @@
-# DevOps CI/CD Pipeline with AWS EKS and Jenkins
+# SRE-Project-2-DevSecOps-AWS-EKS-Jenkins-Argocd
 
 A production-ready CI/CD pipeline for deploying applications to AWS EKS with comprehensive security scanning, policy enforcement, and GitOps-based deployment using ArgoCD.
 
